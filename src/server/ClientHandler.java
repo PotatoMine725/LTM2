@@ -1,0 +1,160 @@
+package server;
+
+import shared.AccountProtocol;
+import shared.Protocol;
+
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.net.Socket;
+import java.nio.file.Paths;
+import java.util.function.Consumer;
+
+final class ClientHandler implements Runnable {
+    private final Socket socket;
+    private final Consumer<String> messageConsumer;
+    private final Consumer<String> logConsumer;
+    private final Runnable onClose;
+    private final UserStore userStore;
+    private DataInputStream input;
+    private DataOutputStream output;
+    private volatile boolean active = true;
+    private String username;
+
+    ClientHandler(Socket socket, Consumer<String> messageConsumer, Consumer<String> logConsumer, Runnable onClose, UserStore userStore) {
+        this.socket = socket;
+        this.messageConsumer = messageConsumer;
+        this.logConsumer = logConsumer;
+        this.onClose = onClose;
+        this.userStore = userStore;
+    }
+
+    @Override
+    public void run() {
+        try {
+            socket.setSoTimeout(15_000);
+            input = new DataInputStream(socket.getInputStream());
+            output = new DataOutputStream(socket.getOutputStream());
+            while (active) {
+                String command = input.readUTF();
+                if (AccountProtocol.REGISTER.equals(command)) {
+                    handleRegister();
+                } else if (AccountProtocol.LOGIN.equals(command)) {
+                    handleLogin();
+                } else if (AccountProtocol.LOGOUT.equals(command)) {
+                    handleLogout();
+                } else if (Protocol.TEXT.equals(command)) {
+                    handleText();
+                } else if (Protocol.IMAGE.equals(command)) {
+                    handleImage();
+                } else if (Protocol.DISCONNECT.equals(command)) {
+                    break;
+                } else {
+                    logConsumer.accept("Unknown command from " + socket.getRemoteSocketAddress() + ": " + command);
+                }
+            }
+        } catch (IOException ex) {
+            logConsumer.accept("Client error from " + socket.getRemoteSocketAddress() + ": " + ex.getMessage());
+        } finally {
+            close();
+        }
+    }
+
+    private void handleRegister() throws IOException {
+        String user = input.readUTF();
+        String pass = input.readUTF();
+        boolean ok = userStore != null && userStore.register(user, pass);
+        output.writeUTF(ok ? AccountProtocol.AUTH_OK : AccountProtocol.AUTH_FAIL);
+        output.writeUTF(ok ? "Registered" : "Register failed");
+        output.flush();
+        if (ok) {
+            logConsumer.accept("Account registered: " + user);
+        }
+    }
+
+    private void handleLogin() throws IOException {
+        String user = input.readUTF();
+        String pass = input.readUTF();
+        boolean ok = userStore != null && userStore.authenticate(user, pass);
+        output.writeUTF(ok ? AccountProtocol.AUTH_OK : AccountProtocol.AUTH_FAIL);
+        output.writeUTF(ok ? "Login successful" : "Login failed");
+        output.flush();
+        if (ok) {
+            username = user;
+            logConsumer.accept("Account logged in: " + user);
+        }
+    }
+
+    private void handleLogout() throws IOException {
+        username = null;
+        output.writeUTF(Protocol.TEXT);
+        output.writeUTF("Logged out");
+        output.flush();
+    }
+
+    private void handleText() throws IOException {
+        String message = input.readUTF();
+        messageConsumer.accept(prefix() + message);
+        output.writeUTF(Protocol.TEXT);
+        output.writeUTF("Received: " + message);
+        output.flush();
+    }
+
+    private void handleImage() throws IOException {
+        String filename = input.readUTF();
+        long size = input.readLong();
+        if (size < 0 || size > Protocol.MAX_IMAGE_SIZE) {
+            throw new IOException("Invalid image size: " + size);
+        }
+        File dir = new File(Protocol.IMAGE_SAVE_DIR);
+        if (!dir.exists() && !dir.mkdirs()) {
+            throw new IOException("Cannot create image directory");
+        }
+        String safeName = Paths.get(filename).getFileName().toString();
+        File target = new File(dir, safeName);
+        try (FileOutputStream fileOut = new FileOutputStream(target)) {
+            byte[] buffer = new byte[8192];
+            long remaining = size;
+            while (remaining > 0) {
+                int read = input.read(buffer, 0, (int) Math.min(buffer.length, remaining));
+                if (read == -1) {
+                    throw new IOException("Unexpected end of image stream");
+                }
+                fileOut.write(buffer, 0, read);
+                remaining -= read;
+            }
+        }
+        messageConsumer.accept(prefix() + "[IMAGE] " + safeName + " (" + size + " bytes)");
+        output.writeUTF(Protocol.TEXT);
+        output.writeUTF("Saved image: " + safeName);
+        output.flush();
+    }
+
+    private String prefix() {
+        return (username != null ? username : socket.getRemoteSocketAddress().toString()) + ": ";
+    }
+
+    private void close() {
+        active = false;
+        onClose.run();
+        try {
+            if (input != null) {
+                input.close();
+            }
+        } catch (IOException ignored) {
+        }
+        try {
+            if (output != null) {
+                output.close();
+            }
+        } catch (IOException ignored) {
+        }
+        try {
+            socket.close();
+        } catch (IOException ignored) {
+        }
+        logConsumer.accept("Client disconnected: " + socket.getRemoteSocketAddress());
+    }
+}
