@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(remember:remember)",
+      "Bash(\"D:/Tools/apache-maven-3.9.9/bin/mvn.cmd\" clean *)",
+      "Bash(git add *)"
+    ]
+  }
+}

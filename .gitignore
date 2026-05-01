@@ -1,0 +1,6 @@
+.gitnexus
+target/
+dist/
+*.db
+received_images/
+.remember/

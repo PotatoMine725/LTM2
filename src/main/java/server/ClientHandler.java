@@ -34,7 +34,7 @@ final class ClientHandler implements Runnable {
     @Override
     public void run() {
         try {
-            socket.setSoTimeout(15_000);
+            socket.setSoTimeout(5 * 60 * 1000);
             input = new DataInputStream(socket.getInputStream());
             output = new DataOutputStream(socket.getOutputStream());
             while (active) {
