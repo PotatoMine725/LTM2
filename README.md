@@ -95,20 +95,19 @@ The Client provides a user-friendly interface for interacting with the server.
 - Server binds to port (e.g., 8080)  
 - GUI updates status → "Running"  
 
-#### Run from source
+#### Build
 ```powershell
 & "D:\Tools\apache-maven-3.9.9\bin\mvn.cmd" clean package
+```
+
+#### Run Server (fat jar)
+```powershell
 java -jar target\ltm2-chat-1.0.0-all.jar
 ```
 
-#### Run portable build
+#### Run Server (portable)
 ```powershell
 .\dist\LTM2-Server\LTM2-Server.exe
-```
-
-#### Run server from source launcher
-```powershell
-java -jar target\ltm2-chat-1.0.0-all.jar
 ```
 
 ---
@@ -120,20 +119,14 @@ java -jar target\ltm2-chat-1.0.0-all.jar
   - Port: 8080  
 - Click Connect  
 
-#### Run client from source
+#### Run Client (fat jar)
 ```powershell
-& "D:\Tools\apache-maven-3.9.9\bin\mvn.cmd" clean package
-java -jar target\ltm2-chat-1.0.0-all.jar
+java -cp target\ltm2-chat-1.0.0-all.jar client.ClientLauncher
 ```
 
-#### Run portable build
+#### Run Client (portable)
 ```powershell
 .\dist\LTM2-Client\LTM2-Client.exe
-```
-
-#### Run client from source launcher
-```powershell
-java -jar target\ltm2-chat-1.0.0-all.jar
 ```
 
 ---
