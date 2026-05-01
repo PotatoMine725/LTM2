@@ -4,3 +4,4 @@ dist/
 *.db
 received_images/
 .remember/
+.worktrees/
