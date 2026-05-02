@@ -9,6 +9,9 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.Socket;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.function.Consumer;
 
 public class ChatClient {
@@ -18,6 +21,8 @@ public class ChatClient {
     private DataOutputStream output;
     private Thread listenerThread;
     private volatile boolean connected;
+    // [type, sender, content, timestamp_ms] — buffered until ChatFrame reads them
+    private final List<String[]> pendingHistory = new ArrayList<>();
 
     public ChatClient(Consumer<String> statusConsumer) {
         this.statusConsumer = statusConsumer;
@@ -54,11 +59,36 @@ public class ChatClient {
     public synchronized boolean login(String username, String password) {
         boolean ok = sendAuthCommand(AccountProtocol.LOGIN, username, password);
         if (ok) {
+            loadHistory();
             listenerThread = new Thread(this::listenLoop, "client-listener");
             listenerThread.setDaemon(true);
             listenerThread.start();
         }
         return ok;
+    }
+
+    public List<String[]> getPendingHistory() {
+        return Collections.unmodifiableList(pendingHistory);
+    }
+
+    public void clearPendingHistory() {
+        pendingHistory.clear();
+    }
+
+    private void loadHistory() {
+        try {
+            String cmd;
+            while (!(cmd = input.readUTF()).equals(Protocol.HISTORY_END)) {
+                if (Protocol.HISTORY.equals(cmd)) {
+                    String type = input.readUTF();
+                    String sender = input.readUTF();
+                    String content = input.readUTF();
+                    String timestamp = input.readUTF();
+                    pendingHistory.add(new String[]{type, sender, content, timestamp});
+                }
+            }
+        } catch (IOException ignored) {
+        }
     }
 
     public synchronized void logout() {

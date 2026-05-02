@@ -10,6 +10,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.Socket;
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.function.Consumer;
 
 final class ClientHandler implements Runnable {
@@ -84,9 +85,27 @@ final class ClientHandler implements Runnable {
         if (ok) {
             username = user;
             logEvent("Account logged in: " + user);
+            sendHistory();
         } else {
             logEvent("Login failed");
+            output.writeUTF(Protocol.HISTORY_END);
+            output.flush();
         }
+    }
+
+    private void sendHistory() throws IOException {
+        if (userStore != null) {
+            List<String[]> history = userStore.getRecentMessages(50);
+            for (String[] item : history) {
+                output.writeUTF(Protocol.HISTORY);
+                output.writeUTF(item[0]); // type
+                output.writeUTF(item[1]); // sender
+                output.writeUTF(item[2]); // content
+                output.writeUTF(item[3]); // timestamp ms
+            }
+        }
+        output.writeUTF(Protocol.HISTORY_END);
+        output.flush();
     }
 
     private void handleLogout() throws IOException {
@@ -101,6 +120,9 @@ final class ClientHandler implements Runnable {
         String message = input.readUTF();
         if (message.length() > 1000) {
             throw new IOException("Message too long");
+        }
+        if (username != null && userStore != null) {
+            userStore.saveMessage(username, "TEXT", message);
         }
         messageConsumer.accept(prefix() + escape(message));
         output.writeUTF(Protocol.TEXT);
@@ -134,6 +156,9 @@ final class ClientHandler implements Runnable {
                 fileOut.write(buffer, 0, read);
                 remaining -= read;
             }
+        }
+        if (username != null && userStore != null) {
+            userStore.saveMessage(username, "IMAGE", safeName);
         }
         messageConsumer.accept(prefix() + "[IMAGE] " + safeName + " (" + size + " bytes)");
         output.writeUTF(Protocol.TEXT);

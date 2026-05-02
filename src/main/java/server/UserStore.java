@@ -9,6 +9,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
 
 final class UserStore {
     private static final String DB_URL = "jdbc:sqlite:ltm2-users.db";
@@ -60,12 +62,44 @@ final class UserStore {
         }
     }
 
+    void saveMessage(String sender, String type, String content) {
+        String sql = "INSERT INTO messages(sender, type, content, sent_at) VALUES (?, ?, ?, ?)";
+        try (Connection connection = DriverManager.getConnection(DB_URL);
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, sender);
+            statement.setString(2, type);
+            statement.setString(3, content);
+            statement.setLong(4, System.currentTimeMillis());
+            statement.executeUpdate();
+        } catch (SQLException ignored) {
+        }
+    }
+
+    // Returns list of [type, sender, content, timestamp_ms], oldest first
+    List<String[]> getRecentMessages(int limit) {
+        String sql = "SELECT type, sender, content, sent_at FROM "
+                + "(SELECT type, sender, content, sent_at FROM messages ORDER BY sent_at DESC LIMIT ?) "
+                + "ORDER BY sent_at ASC";
+        List<String[]> result = new ArrayList<>();
+        try (Connection connection = DriverManager.getConnection(DB_URL);
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, limit);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    result.add(new String[]{
+                            rs.getString("type"),
+                            rs.getString("sender"),
+                            rs.getString("content"),
+                            String.valueOf(rs.getLong("sent_at"))
+                    });
+                }
+            }
+        } catch (SQLException ignored) {
+        }
+        return result;
+    }
+
     private void initDatabase() {
-        String sql = "CREATE TABLE IF NOT EXISTS users ("
-                + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                + "username TEXT NOT NULL UNIQUE, "
-                + "password_hash TEXT NOT NULL, "
-                + "salt TEXT NOT NULL)";
         try {
             Class.forName("org.sqlite.JDBC");
         } catch (ClassNotFoundException ex) {
@@ -73,7 +107,17 @@ final class UserStore {
         }
         try (Connection connection = DriverManager.getConnection(DB_URL);
              Statement statement = connection.createStatement()) {
-            statement.execute(sql);
+            statement.execute("CREATE TABLE IF NOT EXISTS users ("
+                    + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    + "username TEXT NOT NULL UNIQUE, "
+                    + "password_hash TEXT NOT NULL, "
+                    + "salt TEXT NOT NULL)");
+            statement.execute("CREATE TABLE IF NOT EXISTS messages ("
+                    + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    + "sender TEXT NOT NULL, "
+                    + "type TEXT NOT NULL, "
+                    + "content TEXT NOT NULL, "
+                    + "sent_at INTEGER NOT NULL)");
         } catch (SQLException ex) {
             throw new IllegalStateException("Unable to initialize user database", ex);
         }

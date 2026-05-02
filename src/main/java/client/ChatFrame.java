@@ -8,6 +8,11 @@ import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
 import javax.imageio.ImageIO;
 
 public class ChatFrame extends JFrame {
@@ -24,24 +29,30 @@ public class ChatFrame extends JFrame {
     private final JButton fileButton = new JButton("Attach");
     private final JButton logoutButton = new JButton("Logout");
 
+    private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
+
     // Text styles
     private final Style baseStyle;
     private final Style youStyle;
     private final Style serverStyle;
     private final Style captionStyle;
+    private final Style historyStyle;
 
     public ChatFrame(ChatClient chatClient, String username) {
         super("LTM2 Chat — " + username);
         this.chatClient = chatClient;
         this.username = username;
-        baseStyle   = initStyle("base",    null,            Color.DARK_GRAY, false);
-        youStyle    = initStyle("you",     baseStyle,       new Color(0, 90, 200), true);
-        serverStyle = initStyle("server",  baseStyle,       new Color(60, 60, 60), false);
-        captionStyle = initStyle("caption", baseStyle,      Color.GRAY, false);
+        baseStyle    = initStyle("base",    null,        Color.DARK_GRAY, false);
+        youStyle     = initStyle("you",     baseStyle,   new Color(0, 90, 200), true);
+        serverStyle  = initStyle("server",  baseStyle,   new Color(60, 60, 60), false);
+        captionStyle = initStyle("caption", baseStyle,   Color.GRAY, false);
         StyleConstants.setFontSize(captionStyle, 11);
+        historyStyle = initStyle("history", baseStyle,   new Color(130, 130, 130), false);
+        StyleConstants.setItalic(historyStyle, true);
         chatClient.setStatusHandler(this::appendMessage);
         buildUi();
         wireEvents();
+        renderHistory();
     }
 
     private Style initStyle(String name, Style parent, Color color, boolean bold) {
@@ -171,6 +182,25 @@ public class ChatFrame extends JFrame {
                 appendStyledText("[Failed to load image: " + file.getName() + "]\n", captionStyle);
             }
         });
+    }
+
+    private void renderHistory() {
+        List<String[]> history = chatClient.getPendingHistory();
+        if (history.isEmpty()) return;
+        appendStyledText("─────── Lịch sử chat ───────\n", captionStyle);
+        for (String[] item : history) {
+            String type = item[0], sender = item[1], content = item[2];
+            String time = LocalDateTime
+                    .ofInstant(Instant.ofEpochMilli(Long.parseLong(item[3])), ZoneId.systemDefault())
+                    .format(TIME_FMT);
+            if ("IMAGE".equals(type)) {
+                appendStyledText("[" + time + "] " + sender + " đã gửi ảnh: " + content + "\n", historyStyle);
+            } else {
+                appendStyledText("[" + time + "] " + sender + ": " + content + "\n", historyStyle);
+            }
+        }
+        appendStyledText("────────────────────────────\n", captionStyle);
+        chatClient.clearPendingHistory();
     }
 
     private static Image scaleDown(BufferedImage src, int maxW, int maxH) {
