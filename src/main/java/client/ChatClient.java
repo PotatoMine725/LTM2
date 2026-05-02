@@ -12,7 +12,7 @@ import java.net.Socket;
 import java.util.function.Consumer;
 
 public class ChatClient {
-    private final Consumer<String> statusConsumer;
+    private volatile Consumer<String> statusConsumer;
     private Socket socket;
     private DataInputStream input;
     private DataOutputStream output;
@@ -21,6 +21,14 @@ public class ChatClient {
 
     public ChatClient(Consumer<String> statusConsumer) {
         this.statusConsumer = statusConsumer;
+    }
+
+    public void setStatusHandler(Consumer<String> handler) {
+        this.statusConsumer = handler;
+    }
+
+    public boolean isConnected() {
+        return connected;
     }
 
     public synchronized void connect(String host, int port) {
@@ -77,7 +85,7 @@ public class ChatClient {
             output.writeUTF(Protocol.TEXT);
             output.writeUTF(message);
             output.flush();
-            statusConsumer.accept("Sent text: " + message);
+            // ChatFrame already shows the message locally before calling sendText
         } catch (IOException ex) {
             statusConsumer.accept("Send text failed: " + ex.getClass().getSimpleName());
         }
@@ -103,7 +111,7 @@ public class ChatClient {
             output.writeLong(size);
             inputStream.transferTo(output);
             output.flush();
-            statusConsumer.accept("Sent image: " + file.getName());
+            statusConsumer.accept("[You sent: " + file.getName() + "]");
         } catch (IOException ex) {
             statusConsumer.accept("Send image failed: " + ex.getClass().getSimpleName());
         }
