@@ -194,13 +194,41 @@ public class ChatFrame extends JFrame {
                     .ofInstant(Instant.ofEpochMilli(Long.parseLong(item[3])), ZoneId.systemDefault())
                     .format(TIME_FMT);
             if ("IMAGE".equals(type)) {
-                appendStyledText("[" + time + "] " + sender + " đã gửi ảnh: " + content + "\n", historyStyle);
+                appendStyledText("[" + time + "] " + sender + " đã gửi ảnh:\n", historyStyle);
+                appendHistoryImage(content);
             } else {
                 appendStyledText("[" + time + "] " + sender + ": " + content + "\n", historyStyle);
             }
         }
         appendStyledText("────────────────────────────\n", captionStyle);
         chatClient.clearPendingHistory();
+    }
+
+    private void appendHistoryImage(String filename) {
+        File cached = new File(shared.Protocol.IMAGE_CACHE_DIR, filename);
+        if (!cached.isFile()) {
+            appendStyledText("  [ảnh không tìm thấy: " + filename + "]\n", captionStyle);
+            return;
+        }
+        try {
+            BufferedImage raw = ImageIO.read(cached);
+            if (raw == null) {
+                appendStyledText("  [không đọc được ảnh: " + filename + "]\n", captionStyle);
+                return;
+            }
+            Image scaled = scaleDown(raw, IMG_MAX_W, IMG_MAX_H);
+            ImageIcon icon = new ImageIcon(scaled);
+            Style imgStyle = chatPane.addStyle("hist-img-" + System.nanoTime(), null);
+            StyleConstants.setIcon(imgStyle, icon);
+            try {
+                doc.insertString(doc.getLength(), " ", imgStyle);
+                doc.insertString(doc.getLength(), "\n" + filename + "\n", captionStyle);
+            } catch (BadLocationException ignored) {
+            }
+            chatPane.setCaretPosition(doc.getLength());
+        } catch (IOException ex) {
+            appendStyledText("  [lỗi đọc ảnh: " + filename + "]\n", captionStyle);
+        }
     }
 
     private static Image scaleDown(BufferedImage src, int maxW, int maxH) {

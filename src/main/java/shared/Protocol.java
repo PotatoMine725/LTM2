@@ -9,6 +9,7 @@ public final class Protocol {
     public static final int DEFAULT_PORT = 8080;
     public static final int MAX_IMAGE_SIZE = 10 * 1024 * 1024;
     public static final String IMAGE_SAVE_DIR = "received_images";
+    public static final String IMAGE_CACHE_DIR = "chat_image_cache";
 
     private Protocol() {
     }

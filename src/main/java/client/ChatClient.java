@@ -9,6 +9,10 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.Socket;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -73,6 +77,16 @@ public class ChatClient {
 
     public void clearPendingHistory() {
         pendingHistory.clear();
+    }
+
+    private void cacheImage(File file) {
+        try {
+            Path cacheDir = Paths.get(Protocol.IMAGE_CACHE_DIR);
+            Files.createDirectories(cacheDir);
+            Path dest = cacheDir.resolve(Paths.get(file.getName()).getFileName());
+            Files.copy(file.toPath(), dest, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException ignored) {
+        }
     }
 
     private void loadHistory() {
@@ -141,6 +155,7 @@ public class ChatClient {
             output.writeLong(size);
             inputStream.transferTo(output);
             output.flush();
+            cacheImage(file);
             statusConsumer.accept("[You sent: " + file.getName() + "]");
         } catch (IOException ex) {
             statusConsumer.accept("Send image failed: " + ex.getClass().getSimpleName());
