@@ -14,7 +14,7 @@ jpackage ^
   --type app-image ^
   --input dist ^
   --main-jar ltm2-chat-1.0.0-all.jar ^
-  --main-class server.ServerApp ^
+  --main-class server.ServerLauncher ^
   --name LTM2-Server ^
   --app-version 1.0.0 ^
   --dest dist
