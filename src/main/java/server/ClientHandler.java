@@ -6,6 +6,7 @@ import shared.Protocol;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.Socket;
@@ -23,6 +24,9 @@ final class ClientHandler implements Runnable {
     private DataOutputStream output;
     private volatile boolean active = true;
     private String username;
+    // H1: giới hạn số lần đăng nhập thất bại trên một connection
+    private int loginFailures = 0;
+    private static final int MAX_LOGIN_ATTEMPTS = 5;
 
     ClientHandler(Socket socket, Consumer<String> messageConsumer, Consumer<String> logConsumer, Runnable onClose, UserStore userStore) {
         this.socket = socket;
@@ -35,7 +39,7 @@ final class ClientHandler implements Runnable {
     @Override
     public void run() {
         try {
-            socket.setSoTimeout(5 * 60 * 1000);
+            socket.setSoTimeout(2 * 60 * 1000); // 2 min pre-auth — giảm idle abuse
             input = new DataInputStream(socket.getInputStream());
             output = new DataOutputStream(socket.getOutputStream());
             while (active) {
@@ -47,9 +51,19 @@ final class ClientHandler implements Runnable {
                 } else if (AccountProtocol.LOGOUT.equals(command)) {
                     handleLogout();
                 } else if (Protocol.TEXT.equals(command)) {
-                    handleText();
+                    // H2: từ chối nếu chưa xác thực
+                    if (username == null) {
+                        logEvent("Unauthenticated TEXT rejected from " + socket.getRemoteSocketAddress());
+                    } else {
+                        handleText();
+                    }
                 } else if (Protocol.IMAGE.equals(command)) {
-                    handleImage();
+                    // H2: từ chối nếu chưa xác thực
+                    if (username == null) {
+                        logEvent("Unauthenticated IMAGE rejected from " + socket.getRemoteSocketAddress());
+                    } else {
+                        handleImage();
+                    }
                 } else if (Protocol.DISCONNECT.equals(command)) {
                     break;
                 } else {
@@ -76,6 +90,15 @@ final class ClientHandler implements Runnable {
     }
 
     private void handleLogin() throws IOException {
+        // H1: ngắt kết nối nếu vượt quá số lần thử tối đa
+        if (loginFailures >= MAX_LOGIN_ATTEMPTS) {
+            output.writeUTF(AccountProtocol.AUTH_FAIL);
+            output.writeUTF("Too many failed attempts — disconnected");
+            output.flush();
+            logEvent("Login blocked after " + MAX_LOGIN_ATTEMPTS + " failures");
+            active = false;
+            return;
+        }
         String user = sanitize(input.readUTF());
         String pass = input.readUTF();
         boolean ok = userStore != null && userStore.authenticate(user, pass);
@@ -85,11 +108,11 @@ final class ClientHandler implements Runnable {
         if (ok) {
             username = user;
             logEvent("Account logged in: " + user);
+            setPostAuthTimeout();
             sendHistory();
         } else {
-            logEvent("Login failed");
-            output.writeUTF(Protocol.HISTORY_END);
-            output.flush();
+            loginFailures++;
+            logEvent("Login failed (" + loginFailures + "/" + MAX_LOGIN_ATTEMPTS + ")");
         }
     }
 
@@ -144,7 +167,9 @@ final class ClientHandler implements Runnable {
         if (safeName.isBlank() || safeName.contains("..") || safeName.contains("/") || safeName.contains("\\")) {
             throw new IOException("Invalid filename");
         }
-        File target = new File(dir, safeName);
+        // M2: prefix timestamp để tránh ghi đè file cùng tên
+        String uniqueName = System.currentTimeMillis() + "_" + safeName;
+        File target = new File(dir, uniqueName);
         try (FileOutputStream fileOut = new FileOutputStream(target)) {
             byte[] buffer = new byte[8192];
             long remaining = size;
@@ -157,10 +182,15 @@ final class ClientHandler implements Runnable {
                 remaining -= read;
             }
         }
-        if (username != null && userStore != null) {
-            userStore.saveMessage(username, "IMAGE", safeName);
+        // H3: kiểm tra magic bytes — xóa file nếu không phải ảnh hợp lệ
+        if (!isValidImageFile(target)) {
+            target.delete();
+            throw new IOException("File is not a valid image (rejected by magic bytes check)");
         }
-        messageConsumer.accept(prefix() + "[IMAGE] " + safeName + " (" + size + " bytes)");
+        if (username != null && userStore != null) {
+            userStore.saveMessage(username, "IMAGE", uniqueName);
+        }
+        messageConsumer.accept(prefix() + "[IMAGE] " + uniqueName + " (" + size + " bytes)");
         output.writeUTF(Protocol.TEXT);
         output.writeUTF("Saved image");
         output.flush();
@@ -172,6 +202,13 @@ final class ClientHandler implements Runnable {
 
     private String sanitize(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private void setPostAuthTimeout() {
+        try {
+            socket.setSoTimeout(30 * 60 * 1000); // 30 min post-auth
+        } catch (IOException ignored) {
+        }
     }
 
     private String escape(String message) {
@@ -206,5 +243,22 @@ final class ClientHandler implements Runnable {
 
     private void logError(String context, Exception ex) {
         logConsumer.accept("[ERROR] " + context + ": " + ex.getClass().getSimpleName());
+    }
+
+    /** H3: Kiểm tra magic bytes — chỉ chấp nhận JPEG, PNG, GIF */
+    private boolean isValidImageFile(File file) {
+        byte[] header = new byte[4];
+        try (FileInputStream fis = new FileInputStream(file)) {
+            if (fis.read(header) < 4) return false;
+        } catch (IOException ex) {
+            return false;
+        }
+        // JPEG: FF D8 FF
+        if ((header[0] & 0xFF) == 0xFF && (header[1] & 0xFF) == 0xD8) return true;
+        // PNG:  89 50 4E 47
+        if ((header[0] & 0xFF) == 0x89 && (header[1] & 0xFF) == 0x50) return true;
+        // GIF:  47 49 46 38
+        if ((header[0] & 0xFF) == 0x47 && (header[1] & 0xFF) == 0x49) return true;
+        return false;
     }
 }

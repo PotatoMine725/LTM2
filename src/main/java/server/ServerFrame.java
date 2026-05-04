@@ -64,11 +64,21 @@ public class ServerFrame extends JFrame {
     }
 
     private void wireEvents() {
-        startButton.addActionListener(e -> {
-            int port = Integer.parseInt(portField.getText().trim());
-            server.start(port);
-        });
+        startButton.addActionListener(e -> handleStart());
         stopButton.addActionListener(e -> server.stop());
+    }
+
+    private void handleStart() {
+        String raw = portField.getText().trim();
+        int port;
+        try {
+            port = Integer.parseInt(raw);
+            if (port < 1 || port > 65535) throw new NumberFormatException("out of range");
+        } catch (NumberFormatException ex) {
+            setStatus("Invalid port — enter 1–65535");
+            return;
+        }
+        server.start(port);
     }
 
     private void appendLog(String text) {

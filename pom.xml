@@ -24,6 +24,12 @@
             <artifactId>flatlaf</artifactId>
             <version>3.4</version>
         </dependency>
+        <!-- C2/C3: BCrypt cho password hashing — thay thế SHA-256 -->
+        <dependency>
+            <groupId>at.favre.lib</groupId>
+            <artifactId>bcrypt</artifactId>
+            <version>0.10.2</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -65,6 +71,7 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
+                            <outputDirectory>${project.basedir}/dist</outputDirectory>
                             <finalName>ltm2-chat-1.0.0-all</finalName>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
                             <transformers>

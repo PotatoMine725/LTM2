@@ -3,6 +3,11 @@ package client;
 import shared.AccountProtocol;
 import shared.Protocol;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
@@ -13,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -46,11 +52,12 @@ public class ChatClient {
             return;
         }
         try {
-            socket = new Socket(host, port);
+            // C1: dùng SSLSocket thay Socket thường — mã hóa toàn bộ kết nối
+            socket = createSslSocket(host, port);
             input = new DataInputStream(socket.getInputStream());
             output = new DataOutputStream(socket.getOutputStream());
             connected = true;
-            statusConsumer.accept("Connected to " + host + ":" + port);
+            statusConsumer.accept("Connected to " + host + ":" + port + " (TLS)");
         } catch (IOException ex) {
             statusConsumer.accept("Connect failed: " + ex.getClass().getSimpleName());
         }
@@ -239,6 +246,30 @@ public class ChatClient {
                 socket.close();
             }
         } catch (IOException ignored) {
+        }
+    }
+
+    /**
+     * C1: Tạo SSLSocket với TrustManager chấp nhận self-signed cert.
+     * Phù hợp với môi trường localhost — kết nối được mã hóa TLS.
+     */
+    private static Socket createSslSocket(String host, int port) throws IOException {
+        try {
+            TrustManager[] trustAll = new TrustManager[]{new X509TrustManager() {
+                public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
+                public void checkClientTrusted(X509Certificate[] c, String a) {}
+                public void checkServerTrusted(X509Certificate[] c, String a) {}
+            }};
+            SSLContext ctx = SSLContext.getInstance("TLS");
+            ctx.init(null, trustAll, new java.security.SecureRandom());
+            SSLSocketFactory factory = ctx.getSocketFactory();
+            SSLSocket sslSocket = (SSLSocket) factory.createSocket(host, port);
+            sslSocket.startHandshake();
+            return sslSocket;
+        } catch (IOException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new IOException("TLS handshake failed: " + ex.getMessage(), ex);
         }
     }
 }
