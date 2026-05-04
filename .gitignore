@@ -5,3 +5,11 @@ dist/
 received_images/
 .remember/
 .worktrees/
+
+Docs/
+.claude/
+.github/
+chat_image_cache/
+
+CLAUDE.md
+AGENTS.md

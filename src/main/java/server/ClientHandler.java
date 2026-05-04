@@ -167,8 +167,8 @@ final class ClientHandler implements Runnable {
         if (safeName.isBlank() || safeName.contains("..") || safeName.contains("/") || safeName.contains("\\")) {
             throw new IOException("Invalid filename");
         }
-        // M2: prefix timestamp để tránh ghi đè file cùng tên
-        String uniqueName = System.currentTimeMillis() + "_" + safeName;
+        // Client now generates the unique timestamp prefix to ensure cache synchronization
+        String uniqueName = safeName;
         File target = new File(dir, uniqueName);
         try (FileOutputStream fileOut = new FileOutputStream(target)) {
             byte[] buffer = new byte[8192];

@@ -86,11 +86,11 @@ public class ChatClient {
         pendingHistory.clear();
     }
 
-    private void cacheImage(File file) {
+    private void cacheImage(File file, String uniqueName) {
         try {
             Path cacheDir = Paths.get(Protocol.IMAGE_CACHE_DIR);
             Files.createDirectories(cacheDir);
-            Path dest = cacheDir.resolve(Paths.get(file.getName()).getFileName());
+            Path dest = cacheDir.resolve(uniqueName);
             Files.copy(file.toPath(), dest, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException ignored) {
         }
@@ -156,14 +156,15 @@ public class ChatClient {
             statusConsumer.accept("File too large");
             return;
         }
+        String uniqueName = System.currentTimeMillis() + "_" + file.getName();
         try (FileInputStream inputStream = new FileInputStream(file)) {
             output.writeUTF(Protocol.IMAGE);
-            output.writeUTF(file.getName());
+            output.writeUTF(uniqueName);
             output.writeLong(size);
             inputStream.transferTo(output);
             output.flush();
-            cacheImage(file);
-            statusConsumer.accept("[You sent: " + file.getName() + "]");
+            cacheImage(file, uniqueName);
+            statusConsumer.accept("[You sent: " + uniqueName + "]");
         } catch (IOException ex) {
             statusConsumer.accept("Send image failed: " + ex.getClass().getSimpleName());
         }
